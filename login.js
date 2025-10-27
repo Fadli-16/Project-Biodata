@@ -93,9 +93,23 @@
 
         try {
         const userKey = "bio:data_" + user.id;
-        if (!localStorage.getItem(userKey) && user.data) {
-            localStorage.setItem(userKey, JSON.stringify(user.data));
+        if (!localStorage.getItem(userKey)) {
+        const initialData = {
+            name: username,
+            role: "",
+            age: "",
+            email: "",
+            location: "",
+            avatar: "",
+            socials: [],
+            personality: [],
+            skillBars: [],
+            timeline: [],
+            skills: [],
+        };
+        localStorage.setItem(userKey, JSON.stringify(initialData));
         }
+        
         localStorage.setItem("bio:logged", "1");
         localStorage.setItem("bio:user", user.id);
 
@@ -122,3 +136,4 @@
         if (e.key === "Enter") splashPass.focus();
         });
 })();
+
