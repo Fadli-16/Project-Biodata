@@ -52,12 +52,58 @@ function loadData() {
   try {
     const cur = localStorage.getItem("bio:user");
     const key = cur ? "bio:data_" + cur : "bio:data";
-    const raw = localStorage.getItem(key) || localStorage.getItem("bio:data");
-    return raw ? JSON.parse(raw) : JSON.parse(JSON.stringify(defaultData));
+    let raw = localStorage.getItem(key);
+
+    // jika tidak ada data khusus user, inisialisasi (tetap dibuat seperti sebelumnya)
+    if (!raw && cur) {
+      const init = {
+        name: "",
+        role: "",
+        age: "",
+        email: "",
+        location: "",
+        avatar: "",
+        socials: [], // tetap kosong di sini — nanti kita pastikan template di-parsed
+        personality: [],
+        skillBars: [],
+        timeline: [],
+      };
+      localStorage.setItem(key, JSON.stringify(init));
+      raw = JSON.stringify(init);
+      // juga sync ke bio:data
+      localStorage.setItem("bio:data", raw);
+    }
+
+    // fallback ke bio:data
+    raw = raw || localStorage.getItem("bio:data");
+
+    const parsed = raw
+      ? JSON.parse(raw)
+      : JSON.parse(JSON.stringify(defaultData));
+
+    // --- NEW: jika ada user saat ini dan socials kosong, tambahkan template sosial ---
+    if (cur) {
+      if (!Array.isArray(parsed.socials) || parsed.socials.length === 0) {
+        parsed.socials = [
+          { name: "Instagram", href: "" },
+          { name: "LinkedIn", href: "" },
+          { name: "GitHub", href: "" },
+        ];
+        // simpan perubahan agar persist ke localStorage tanpa menghapus field lain
+        try {
+          localStorage.setItem(key, JSON.stringify(parsed));
+          localStorage.setItem("bio:data", JSON.stringify(parsed));
+        } catch (e) {
+          /* ignore storage errors */
+        }
+      }
+    }
+    return parsed;
   } catch {
     return JSON.parse(JSON.stringify(defaultData));
   }
 }
+
 function saveData(d) {
   try {
     const cur = localStorage.getItem("bio:user");
@@ -156,6 +202,19 @@ function iconFor(name) {
   return '<svg width="20" height="20" viewBox="0 0 24 24" fill="none"><path d="M12 2a10 10 0 100 20 10 10 0 000-20z" stroke="currentColor" stroke-width="1.2"/></svg>';
 }
 
+function inferNameFromHref(href) {
+  try {
+    const u = new URL(href);
+    let host = u.hostname.replace(/^www\./i, "");
+    const parts = host.split(".");
+    // ambil komponen utama, mis: instagram.com -> instagram
+    return parts.length ? parts[0] : host;
+  } catch (e) {
+    // bukan URL: ambil token pertama sebelum / ? & . etc
+    return (href || "").split(/[:\/\?\&\=\.]/)[0] || "";
+  }
+}
+
 /* Tambahkan data lainnya untuk biodata */
 function renderProfile() {
   if (displayName) displayName.textContent = data.name;
@@ -175,33 +234,72 @@ function renderProfile() {
 }
 
 function renderSocials() {
+  console.log(
+    "[renderSocials] data.socials:",
+    JSON.parse(JSON.stringify(data.socials || []))
+  );
   if (socialLinks) socialLinks.innerHTML = "";
   if (sosmedList) sosmedList.innerHTML = "";
-  (data.socials || []).forEach((s) => {
+
+  const arr = Array.isArray(data.socials) ? data.socials : [];
+
+  if (arr.length === 0) {
     if (socialLinks) {
-      const a = document.createElement("a");
-      a.href = s.href;
-      a.target = "_blank";
-      a.rel = "noreferrer";
-      a.title = s.name;
-      a.innerHTML = iconFor(s.name);
-      socialLinks.appendChild(a);
+      const hint = document.createElement("div");
+      hint.className = "muted";
+      hint.style.fontSize = "13px";
+      hint.style.marginTop = "6px";
+      hint.textContent =
+        "Belum ada tautan sosial — tambahkan tautan untuk menampilkan ikon.";
+      socialLinks.appendChild(hint);
     }
+    return;
+  }
+
+  arr.forEach((s, idx) => {
+    const href = (s && s.href) || "";
+    const rawName = (s && s.name) || "";
+    const name =
+      rawName && rawName.trim() ? rawName.trim() : inferNameFromHref(href);
+    const iconHtml = iconFor(name || href || "");
+
+    // HEADER: tampilkan anchor bila ada href, kalau tidak tampilkan tombol edit
+    if (socialLinks) {
+      let el;
+      if (href) {
+        el = document.createElement("a");
+        el.href = href;
+        el.target = "_blank";
+        el.rel = "noreferrer";
+        el.title = name || href;
+      } else {
+        el = document.createElement("button");
+        el.type = "button";
+        el.className = "icon-btn-plain";
+        el.title = "Tambah / edit " + name;
+        // simpan indeks untuk event handler
+        el.setAttribute("data-edit-social-index", String(idx));
+      }
+      el.style.marginRight = "8px";
+      el.innerHTML = iconHtml;
+      socialLinks.appendChild(el);
+    }
+
+    // DETAIL LIST: selalu tampil (supaya user melihat dan bisa edit)
     if (sosmedList) {
       const row = document.createElement("div");
       row.style.display = "flex";
       row.style.alignItems = "center";
       row.style.gap = "10px";
       row.style.marginTop = "8px";
-      row.innerHTML = `<div style="width:36px;">${iconFor(s.name)}</div>
-        <div style="flex:1"><div style='font-weight:600'>${escapeHtml(
-          s.name
-        )}</div><div class='muted' style='font-size:13px'>${escapeHtml(
-        s.href
-      )}</div></div>
-        <div><button data-edit-social='${escapeHtml(
-          s.name
-        )}' class="icon-btn-plain">✏️</button></div>`;
+      row.innerHTML = `<div style="width:36px;">${iconHtml}</div>
+        <div style="flex:1">
+          <div style='font-weight:600'>${escapeHtml(name || href)}</div>
+          <div class='muted' style='font-size:13px'>${escapeHtml(href)}</div>
+        </div>
+        <div>
+          <button data-edit-social-index='${idx}' class="icon-btn-plain">✏️</button>
+        </div>`;
       sosmedList.appendChild(row);
     }
   });
@@ -571,20 +669,42 @@ if (timelineList) {
 }
 
 /* Social edit */
+function handleEditSocialByIndex(idx) {
+  if (
+    typeof idx !== "number" ||
+    !Array.isArray(data.socials) ||
+    !data.socials[idx]
+  ) {
+    return alert("Sosial media tidak ditemukan");
+  }
+  const curName = data.socials[idx].name || idx;
+  const curHref = data.socials[idx].href || "";
+  const newHref = prompt("Ganti URL untuk " + curName, curHref);
+  if (newHref !== null) {
+    data.socials[idx].href = (newHref || "").trim();
+    saveData(data);
+    render();
+    showToast("Link sosial diubah", true);
+  }
+}
+
+// event delegation untuk daftar kanan
 if (sosmedList) {
   sosmedList.addEventListener("click", (ev) => {
-    const btn = ev.target.closest("button[data-edit-social]");
+    const btn = ev.target.closest("button[data-edit-social-index]");
     if (!btn) return;
-    const name = btn.getAttribute("data-edit-social");
-    const idx = data.socials.findIndex((s) => s.name === name);
-    if (idx === -1) return alert("Sosial media tidak ditemukan");
-    const newHref = prompt("Ganti URL untuk " + name, data.socials[idx].href);
-    if (newHref !== null) {
-      data.socials[idx].href = newHref;
-      saveData(data);
-      render();
-      showToast("Link sosial diubah", true);
-    }
+    const idx = Number(btn.getAttribute("data-edit-social-index"));
+    handleEditSocialByIndex(idx);
+  });
+}
+
+// event delegation untuk header (ikon)
+if (socialLinks) {
+  socialLinks.addEventListener("click", (ev) => {
+    const btn = ev.target.closest("button[data-edit-social-index]");
+    if (!btn) return;
+    const idx = Number(btn.getAttribute("data-edit-social-index"));
+    handleEditSocialByIndex(idx);
   });
 }
 
