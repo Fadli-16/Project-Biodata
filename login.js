@@ -94,20 +94,28 @@
         try {
         const userKey = "bio:data_" + user.id;
         if (!localStorage.getItem(userKey)) {
-        const initialData = {
-            name: username,
-            role: "",
-            age: "",
-            email: "",
-            location: "",
-            avatar: "",
-            socials: [],
-            personality: [],
-            skillBars: [],
-            timeline: [],
-            skills: [],
-        };
-        localStorage.setItem(userKey, JSON.stringify(initialData));
+            const initialData = user.data ? user.data : {
+                name: username,
+                role: "",
+                age: "",
+                email: "",
+                location: "",
+                avatar: "",
+                socials: [
+                    { name: "Instagram", href: "" },
+                    { name: "LinkedIn", href: "" },
+                    { name: "GitHub", href: "" }
+                ],
+                personality: [],
+                skillBars: [],
+                timeline: [],
+            };
+            console.log("[login] initializing user data for", user.id, initialData);
+            localStorage.setItem(userKey, JSON.stringify(initialData));
+            // juga sinkron ke bio:data (memudahkan debug)
+            localStorage.setItem("bio:data", JSON.stringify(initialData));
+        } else {
+            console.log("[login] found existing user data for", user.id,"->", localStorage.getItem(userKey));
         }
         
         localStorage.setItem("bio:logged", "1");
@@ -122,7 +130,7 @@
         } catch (e) {
         /* ignore */
         }
-
+        alert("Login berhasil! Mengalihkan...");
         window.location.href = REDIRECT_TARGET;
     }
 
@@ -136,4 +144,3 @@
         if (e.key === "Enter") splashPass.focus();
         });
 })();
-
